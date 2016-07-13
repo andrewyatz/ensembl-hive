@@ -499,6 +499,42 @@ CREATE INDEX ON worker (meadow_type, meadow_name, process_id);
 
 
 /**
+@table	beekeeper
+
+@colour	#24DA06
+
+@desc	Each row in this table corresponds to a beekeeper process that is running
+        or has run on this pipeline.
+
+@column	beekeeper_id  	   unique ID for this beekeeper
+@column	host		   hostname of machine where beekeeper started
+@column	user		   username under which this beekeeper ran or is running
+@column pid		   pid of the beekeeper
+@column status		   last known status of this beekeeper
+@column sleep		   sleep interval in minutes
+@column analyses_pattern   restricting analyses_pattern, if given
+@column loop_limit	   loop limit if given
+@column	stop_when	   beekeeper's stop_when setting
+@column	options		   all options passed to the beekeeper
+*/
+
+CREATE TABLE beekeeper (
+       beekeeper_id	INTEGER		NOT NULL PRIMARY KEY AUTO_INCREMENT,
+       host		VARCHAR(255)	NOT NULL,
+       user		VARCHAR(255)	NOT NULL,
+       pid		INTEGER		NOT NULL,
+       status		ENUM('ALIVE', 'EXPECTED_EXIT', 'FORCED_EXIT') NOT NULL,
+       sleep		REAL	        NULL,
+       analyses_pattern	VARCHAR(255)  	NULL,
+       loop_limit	INTEGER	      	NULL,
+       stop_when	ENUM('NEVER', 'NO_WORK', 'FAILURE') NOT NULL,
+       options		TEXT	        NULL,
+);
+CREATE INDEX ON beekeeper (beekeeper_id);
+CREATE INDEX ON beekeeper (host, user, pid);
+
+
+/**
 @table  role
 
 @colour #24DA06
@@ -583,6 +619,7 @@ CREATE TABLE worker_resource_usage (
 @column         job_id  the id of the job that threw the message (or NULL if it was outside of a message)
 @column        role_id  the 'current' role
 @column      worker_id  the 'current' worker
+@column	  beekeeper_id	beekeeper that generated this message
 @column    when_logged  when the message was thrown
 @column          retry  retry_count of the job when the message was thrown (or NULL if no job)
 @column         status  of the job or worker when the message was thrown
@@ -595,6 +632,7 @@ CREATE TABLE log_message (
     job_id                  INTEGER              DEFAULT NULL,
     role_id                 INTEGER              DEFAULT NULL,
     worker_id               INTEGER              DEFAULT NULL,
+    beekeeper_id	    INTEGER		 DEFAULT NULL,
     when_logged             TIMESTAMP   NOT NULL DEFAULT CURRENT_TIMESTAMP,
     retry                   INTEGER              DEFAULT NULL,
     status                  VARCHAR(255) NOT NULL DEFAULT 'UNKNOWN',
@@ -604,6 +642,7 @@ CREATE TABLE log_message (
 );
 CREATE INDEX ON log_message (worker_id);
 CREATE INDEX ON log_message (job_id);
+CREATE INDEX ON log_message (beekeeper_id);
 
 
 /**
