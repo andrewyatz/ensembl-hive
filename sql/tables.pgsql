@@ -469,6 +469,7 @@ CREATE INDEX ON analysis_data (md5sum);
 @column resource_class_id   links to Worker's resource class
 @column work_done           how many jobs the Worker has completed successfully
 @column status              current status of the Worker
+@column beekeeper_id	    beekeeper that created this worker
 @column when_born           when the Worker process was started
 @column when_checked_in     when the Worker last checked into the database
 @column when_seen           when the Worker was last seen by the Meadow
@@ -488,6 +489,7 @@ CREATE TABLE worker (
     resource_class_id       INTEGER              DEFAULT NULL,
     work_done               INTEGER      NOT NULL DEFAULT 0,
     status                  VARCHAR(255) NOT NULL DEFAULT 'READY',  -- expected values: 'SPECIALIZATION','COMPILATION','READY','JOB_LIFECYCLE','DEAD'
+    beekeeper_id	    INTEGER	 DEFAULT NULL,
     when_born               TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     when_checked_in         TIMESTAMP            DEFAULT NULL,
     when_seen               TIMESTAMP            DEFAULT NULL,
@@ -507,31 +509,33 @@ CREATE INDEX ON worker (meadow_type, meadow_name, process_id);
         or has run on this pipeline.
 
 @column	beekeeper_id  	   unique ID for this beekeeper
-@column	host		   hostname of machine where beekeeper started
-@column	user		   username under which this beekeeper ran or is running
-@column pid		   pid of the beekeeper
+@column	meadow_host	   hostname of machine where beekeeper started
+@column	meadow_user	   username under which this beekeeper ran or is running
+@column process_id	   pid of the beekeeper
 @column status		   last known status of this beekeeper
-@column sleep		   sleep interval in minutes
+@column sleep_minutes	   sleep interval in minutes
 @column analyses_pattern   restricting analyses_pattern, if given
 @column loop_limit	   loop limit if given
 @column	stop_when	   beekeeper's stop_when setting
 @column	options		   all options passed to the beekeeper
+@column meadow_signatures  signatures for all meadows this beekeeper can submit to
 */
 
 CREATE TABLE beekeeper (
-       beekeeper_id	INTEGER		NOT NULL PRIMARY KEY AUTO_INCREMENT,
-       host		VARCHAR(255)	NOT NULL,
-       user		VARCHAR(255)	NOT NULL,
-       pid		INTEGER		NOT NULL,
-       status		ENUM('ALIVE', 'EXPECTED_EXIT', 'FORCED_EXIT') NOT NULL,
-       sleep		REAL	        NULL,
-       analyses_pattern	VARCHAR(255)  	NULL,
-       loop_limit	INTEGER	      	NULL,
-       stop_when	ENUM('NEVER', 'NO_WORK', 'FAILURE') NOT NULL,
-       options		TEXT	        NULL,
+       beekeeper_id		INTEGER		NOT NULL PRIMARY KEY AUTO_INCREMENT,
+       meadow_host		VARCHAR(255)	NOT NULL,
+       meadow_user		VARCHAR(255)	NOT NULL,
+       process_id		INTEGER		NOT NULL,
+       status			ENUM('ALIVE', 'EXPECTED_EXIT', 'FORCED_EXIT') NOT NULL,
+       sleep_minutes		REAL	        NULL,
+       analyses_pattern		TEXT	 	NULL,
+       loop_limit		INTEGER	      	NULL,
+       stop_when		ENUM('NEVER', 'NO_WORK', 'FAILURE') NOT NULL,
+       options			TEXT	        NULL,
+       meadow_signatures	TEXT		NULL
 );
 CREATE INDEX ON beekeeper (beekeeper_id);
-CREATE INDEX ON beekeeper (host, user, pid);
+CREATE INDEX ON beekeeper (meadow_host, meadow_user, process_id);
 
 
 /**
