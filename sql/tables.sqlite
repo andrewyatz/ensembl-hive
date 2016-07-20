@@ -521,7 +521,7 @@ CREATE TABLE beekeeper (
        sleep_minutes		REAL		NULL,
        analyses_pattern		TEXT	 	NULL,
        loop_limit		INTEGER	      	NULL,
-       stop_when		VARCHAR(255)  	NOT NULL, /* enum('NEVER', 'NO_WORK', 'FAILURE') NOT NULL */
+       stop_when		VARCHAR(255)  	NOT NULL, /* enum('FAILURE', 'LOOP_LIMIT', 'NEVER', 'NO_WORK') NOT NULL */
        options			TEXT	      	NULL,
        meadow_signatures	TEXT		NULL
 );
