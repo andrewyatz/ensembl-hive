@@ -517,7 +517,7 @@ CREATE TABLE beekeeper (
        meadow_host		VARCHAR(255)	NOT NULL,
        meadow_user		VARCHAR(255)	NOT NULL,
        process_id		INTEGER		NOT NULL,
-       status			VARCHAR(255)    NOT NULL, /* enum('ALIVE', 'EXPECTED_EXIT', 'FORCED_EXIT') NOT NULL */
+       status			VARCHAR(255)    NOT NULL, /* enum('ALIVE', 'DISAPPEARED', 'EXPECTED_EXIT', 'FORCED_EXIT') NOT NULL */
        sleep_minutes		REAL		NULL,
        analyses_pattern		TEXT	 	NULL,
        loop_limit		INTEGER	      	NULL,
