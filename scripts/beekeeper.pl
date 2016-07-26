@@ -250,11 +250,14 @@ sub main {
     # so this is where we will register.
     register_beekeeper($self);
 
+    # Check other beekeepers in our meadow to see if they are still alive
+    welfare_check_other_beekeepers($self);
+
     if ($kill_worker_id) {
 	my $kill_worker;
         eval {$kill_worker = $queen->fetch_by_dbID($kill_worker_id) or die};
         if ($@) {
-            update_beekeeper_status($self, 'FORCED_EXIT');
+            update_this_beekeeper_status($self, 'FORCED_EXIT');
             die "Could not fetch worker with dbID='$kill_worker_id' to kill";
         }
 
@@ -271,15 +274,15 @@ sub main {
                     $queen->register_worker_death($kill_worker);
                     # what about clean-up? Should we do it here or not?
                 } else {
-                    update_beekeeper_status($self, 'FORCED_EXIT');
+                    update_this_beekeeper_status($self, 'FORCED_EXIT');
                     die "According to the Meadow, the Worker (dbID=$kill_worker_id) is not running, so cannot kill";
                 }
             } else {
-                update_beekeeper_status($self, 'FORCED_EXIT');
+                update_this_beekeeper_status($self, 'FORCED_EXIT');
                 die "Cannot access the Meadow responsible for the Worker (dbID=$kill_worker_id), so cannot kill";
             }
         } else {
-            update_beekeeper_status($self, 'FORCED_EXIT');
+            update_this_beekeeper_status($self, 'FORCED_EXIT');
             die "According to the Queen, the Worker (dbID=$kill_worker_id) is not running, so cannot kill";
         }
     }
@@ -293,7 +296,7 @@ sub main {
     if($run_job_id) {
         eval {$run_job = $self->{'dba'}->get_AnalysisJobAdaptor->fetch_by_dbID( $run_job_id ) or die};
         if ($@) {
-            update_beekeeper_status($self, 'FORCED_EXIT');
+            update_this_beekeeper_status($self, 'FORCED_EXIT');
             die "Could not fetch Job with dbID=$run_job_id.\n";
         }
     }
@@ -308,14 +311,14 @@ sub main {
               . join(', ', map { $_->logic_name.'('.$_->dbID.')' } @$list_of_analyses)
                 . "\nBeekeeper : ", scalar($self->{'pipeline'}->collection_of('Analysis')->list())-scalar(@$list_of_analyses), " Analyses are not shown\n\n";
         } else {
-            update_beekeeper_status($self, 'FORCED_EXIT');
+            update_this_beekeeper_status($self, 'FORCED_EXIT');
             die "Beekeeper : the -analyses_pattern '".$self->{'analyses_pattern'}."' did not match any Analyses.\n";
         }
     }
 
     if($reset_all_jobs || $reset_failed_jobs) {
         if ($reset_all_jobs and not $self->{'analyses_pattern'}) {
-            update_beekeeper_status($self, 'FORCED_EXIT');
+            update_this_beekeeper_status($self, 'FORCED_EXIT');
             die "Beekeeper : do you really want to reset *all* the jobs ? If yes, add \"-analyses_pattern '%'\" to the command line\n";
         }
         $self->{'dba'}->get_AnalysisJobAdaptor->reset_jobs_for_analysis_id( $list_of_analyses, $reset_all_jobs ); 
@@ -358,7 +361,7 @@ sub main {
             }
         }
     }
-    update_beekeeper_status($self, 'EXPECTED_EXIT');
+    update_this_beekeeper_status($self, 'EXPECTED_EXIT');
     exit(0);
 }
 
@@ -368,6 +371,26 @@ sub main {
 #
 #######################
 
+sub find_live_beekeepers_in_my_meadow {
+    my $self = shift @_;
+
+    my $query = "SELECT beekeeper_id, process_id FROM beekeeper " .
+      "WHERE meadow_host = ? " .
+	"AND beekeeper_id != ? " .
+	  "AND status = 'ALIVE'";
+
+    my $dbc = $self->{'dba'}->dbc;
+    my $sth = $dbc->prepare($query);
+    $sth->execute(hostname, $self->{'beekeeper_id'});
+
+    my @beekeepers = ();
+
+    while (my $row = $sth->fetchrow_hashref) {
+	push(@beekeepers, $row);
+    }
+
+    return \@beekeepers;
+}
 
 sub generate_worker_cmd {
     my ($self, $analyses_pattern, $run_job_id, $force) = @_;
@@ -529,13 +552,15 @@ sub run_autonomously {
             printf("Beekeeper : going to sleep for %.2f minute(s). Expect next iteration at %s\n", $self->{'sleep_minutes'}, scalar localtime(time+$self->{'sleep_minutes'}*60));
             sleep($self->{'sleep_minutes'}*60);  
 
-                # after waking up reload Resources and Analyses to stay current:
+                # after waking up reload Resources and Analyses to stay current.
+	        # this is a good time to check up on other beekeepers as well:
             unless($run_job_id) {
                     # reset all the collections so that fresher data will be used at this iteration:
                 $pipeline->invalidate_collections();
                 $pipeline->invalidate_hive_current_load();
 
                 $list_of_analyses = $pipeline->collection_of('Analysis')->find_all_by_pattern( $analyses_pattern );
+		welfare_check_other_beekeepers($self);
             }
         }
     }
@@ -554,13 +579,13 @@ sub run_autonomously {
     if ($stringified_reasons and $ENV{EHIVE_SLACK_WEBHOOK}) {
         send_beekeeper_message_to_slack($ENV{EHIVE_SLACK_WEBHOOK}, $self->{'pipeline'}, $stringified_reasons);
     }
-    update_beekeeper_status($self, $beekeeper_exit_status);
+    update_this_beekeeper_status($self, $beekeeper_exit_status);
 
     printf("Beekeeper: dbc %d disconnect cycles\n", $hive_dba->dbc->disconnect_count);
     
 }
 
-sub update_beekeeper_status {
+sub update_this_beekeeper_status {
   my ($self, $status) = @_;
 
   my $update = "UPDATE beekeeper " .
@@ -569,6 +594,38 @@ sub update_beekeeper_status {
   my $dbc = $self->{'dba'}->dbc;
   my $sth = $dbc->prepare($update);
   $sth->execute($status, $self->{'beekeeper_id'});
+}
+
+sub update_another_beekeeper_status {
+    my ($self, $beekeeper_to_update, $status) = @_;
+
+    my $update = "UPDATE beekeeper " .
+      "SET status = ? " .
+	"WHERE beekeeper_id = ? " .
+	  "AND process_id = ?";
+
+    my $dbc = $self->{'dba'}->dbc;
+    my $sth = $dbc->prepare($update);
+    $sth->execute($status,
+		  $beekeeper_to_update->{'beekeeper_id'},
+		  $beekeeper_to_update->{'process_id'});
+
+}
+
+sub welfare_check_other_beekeepers {
+    my $self = shift(@_);
+
+    my $allegedly_live_beekeepers_in_my_meadow = find_live_beekeepers_in_my_meadow($self);
+    foreach my $beekeeper_to_check (@$allegedly_live_beekeepers_in_my_meadow) {
+	my $pid = $beekeeper_to_check->{'process_id'};
+	my $cmd = qq{ps -p $pid -f | fgrep beekeeper.pl};
+	my $beekeeper_entry = qx{$cmd};
+
+	print "ran command $cmd\n result was \"$beekeeper_entry\"\n";
+	unless ($beekeeper_entry) {
+	    update_another_beekeeper_status($self, $beekeeper_to_check, 'DISAPPEARED');
+	}
+    }
 }
 
 
