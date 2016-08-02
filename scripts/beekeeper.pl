@@ -15,6 +15,7 @@ BEGIN {
 use Getopt::Long;
 use File::Path 'make_path';
 use Sys::Hostname;
+use Bio::EnsEMBL::Hive::DBSQL::LogMessageAdaptor ('store_beekeeper_message');
 use Bio::EnsEMBL::Hive::Utils ('script_usage', 'destringify', 'report_versions');
 use Bio::EnsEMBL::Hive::Utils::Slack ('send_beekeeper_message_to_slack');
 use Bio::EnsEMBL::Hive::Utils::Config;
@@ -249,6 +250,7 @@ sub main {
     # The beekeeper starts to manipulate pipelines here, rather than just query them,
     # so this is where we will register.
     register_beekeeper($self);
+    $self->{'logmessage_adaptor'} = $self->{'dba'}->get_LogMessageAdaptor();
 
     # Check other beekeepers in our meadow to see if they are still alive
     welfare_check_other_beekeepers($self);
@@ -498,6 +500,7 @@ sub run_autonomously {
             if($keep_alive) {
                 print "Beekeeper : detected exit condition, but staying alive because of -keep_alive : ".$reasons_to_exit;
             } else {
+
                 last BKLOOP;
             }
         }
@@ -530,7 +533,11 @@ sub run_autonomously {
                 foreach my $rc_name (keys %{ $workers_to_submit_by_meadow_type_rc_name->{$meadow_type} }) {
                     my $this_meadow_rc_worker_count = $workers_to_submit_by_meadow_type_rc_name->{$meadow_type}{$rc_name};
 
-                    print "\nBeekeeper : submitting $this_meadow_rc_worker_count workers (rc_name=$rc_name) to ".$this_meadow->signature()."\n";
+		    my $submission_message = "submitting $this_meadow_rc_worker_count workers (rc_name=$rc_name) to ".$this_meadow->signature();
+                    print "\nBeekeeper : $submission_message\n";
+		    $self->{'logmessage_adaptor'}->store_beekeeper_message($self->{'beekeeper_id'},
+									   "loop iteration $iteration, $submission_message",
+									   0);
 
                     my ($submission_cmd_args, $worker_cmd_args) = @{ $meadow_type_rc_name2resource_param_list{ $meadow_type }{ $rc_name } || [] };
 
@@ -545,6 +552,9 @@ sub run_autonomously {
             }
         } else {
             print "\nBeekeeper : not submitting any workers this iteration\n";
+	    $self->{'logmessage_adaptor'}->store_beekeeper_message($self->{'beekeeper_id'},
+								   "loop iteration $iteration, 0 workers submitted",
+								   0);
         }
 
         if( $iteration != $max_loops ) {    # skip the last sleep
@@ -569,18 +579,26 @@ sub run_autonomously {
     my $beekeeper_exit_status = 'EXPECTED_EXIT';
     if ($reasons_to_exit) {
       foreach my $reason_to_exit (@$reasons_to_exit) {
-	$stringified_reasons .= $reason_to_exit->{'message'} . "\n";
+	$stringified_reasons .= $reason_to_exit->{'message'} . ", ";
 	if ($reason_to_exit->{'exit_status'} eq 'FAILED') {
 	  $beekeeper_exit_status = 'FORCED_EXIT'
 	} 
       }
     }
     print "Beekeeper : stopped looping because ".( $stringified_reasons || "the number of loops was limited by $max_loops and this limit expired\n");
-    if ($stringified_reasons and $ENV{EHIVE_SLACK_WEBHOOK}) {
-        send_beekeeper_message_to_slack($ENV{EHIVE_SLACK_WEBHOOK}, $self->{'pipeline'}, $stringified_reasons);
+    if ($stringified_reasons) {
+	if ($ENV{EHIVE_SLACK_WEBHOOK}) {
+	    send_beekeeper_message_to_slack($ENV{EHIVE_SLACK_WEBHOOK}, $self->{'pipeline'}, $stringified_reasons);
+	}
+	$self->{'logmessage_adaptor'}->store_beekeeper_message($self->{'beekeeper_id'},
+							       "stopped looping because: $stringified_reasons",
+							       1, $beekeeper_exit_status);
+    } else {
+	$self->{'logmessage_adaptor'}->store_beekeeper_message($self->{'beekeeper_id'},
+							       "stopped looping because: loop limit expired",
+							       0, $beekeeper_exit_status);
     }
     update_this_beekeeper_status($self, $beekeeper_exit_status);
-
     printf("Beekeeper: dbc %d disconnect cycles\n", $hive_dba->dbc->disconnect_count);
     
 }
@@ -621,7 +639,6 @@ sub welfare_check_other_beekeepers {
 	my $cmd = qq{ps -p $pid -f | fgrep beekeeper.pl};
 	my $beekeeper_entry = qx{$cmd};
 
-	print "ran command $cmd\n result was \"$beekeeper_entry\"\n";
 	unless ($beekeeper_entry) {
 	    update_another_beekeeper_status($self, $beekeeper_to_check, 'DISAPPEARED');
 	}
