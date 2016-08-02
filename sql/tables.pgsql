@@ -521,20 +521,21 @@ CREATE INDEX ON worker (meadow_type, meadow_name, process_id);
 @column meadow_signatures  signatures for all meadows this beekeeper can submit to
 */
 
+CREATE TYPE beekeeper_stat AS ENUM ('ALIVE', 'DISAPPEARED', 'EXPECTED_EXIT', 'FORCED_EXIT');
+CREATE TYPE beekeeper_sw   AS ENUM ('FAILURE', 'LOOP_LIMIT', 'NEVER', 'NO_WORK');
 CREATE TABLE beekeeper (
-       beekeeper_id		INTEGER		NOT NULL PRIMARY KEY AUTO_INCREMENT,
+       beekeeper_id		SERIAL		PRIMARY KEY,
        meadow_host		VARCHAR(255)	NOT NULL,
        meadow_user		VARCHAR(255)	NOT NULL,
        process_id		INTEGER		NOT NULL,
-       status			ENUM('ALIVE', 'DISAPPEARED', 'EXPECTED_EXIT', 'FORCED_EXIT') NOT NULL,
+       status			beekeeper_stat  NOT NULL,
        sleep_minutes		REAL	        NULL,
        analyses_pattern		TEXT	 	NULL,
        loop_limit		INTEGER	      	NULL,
-       stop_when		ENUM('FAILURE', 'LOOP_LIMIT', 'NEVER', 'NO_WORK') NOT NULL,
+       stop_when		beekeeper_sw    NOT NULL,
        options			TEXT	        NULL,
        meadow_signatures	TEXT		NULL
 );
-CREATE INDEX ON beekeeper (beekeeper_id);
 CREATE INDEX ON beekeeper (meadow_host, meadow_user, process_id);
 
 

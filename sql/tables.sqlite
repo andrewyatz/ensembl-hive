@@ -513,7 +513,7 @@ CREATE INDEX worker_meadow_type_meadow_name_process_id_idx ON worker (meadow_typ
 */
 
 CREATE TABLE beekeeper (
-       beekeeper_id		INTEGER		NOT NULL PRIMARY KEY AUTO_INCREMENT,
+       beekeeper_id		INTEGER		NOT NULL PRIMARY KEY AUTOINCREMENT,
        meadow_host		VARCHAR(255)	NOT NULL,
        meadow_user		VARCHAR(255)	NOT NULL,
        process_id		INTEGER		NOT NULL,
@@ -525,7 +525,7 @@ CREATE TABLE beekeeper (
        options			TEXT	      	NULL,
        meadow_signatures	TEXT		NULL
 );
-CREATE INDEX beekeeper_idx ON beekeeper (beekeeper_id);
+
 CREATE INDEX beekeeper_signature_idx ON beekeeper (meadow_host, meadow_user, process_id);
 
 /**

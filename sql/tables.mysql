@@ -531,7 +531,6 @@ CREATE TABLE beekeeper (
        options			TEXT	        NULL,
        meadow_signatures	TEXT		NULL,
 
-       KEY beekeeper_idx (beekeeper_id),
        KEY beekeeper_signature_idx (meadow_host, meadow_user, process_id)
 ) COLLATE=latin1_swedish_ci ENGINE=InnoDB;
 
